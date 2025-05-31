@@ -88,17 +88,35 @@ const ChatWindow = ({ userId, contactId }) => {
     setText("");
   };
 
-  useEffect(()=>{
-    const socket=socketRef.current;
-    console.log("Here is your contactid ",contactId)
-    if (!socket?.connected) {
-        console.warn("❌ Socket not ready");
-        return;
-      }
-      socket.on("typing",text)
-      console.log(text);
+//Listening to typing event when user is typing we are geeting res here
+useEffect(() => {
+  const socket = socketRef.current;
 
-  },[contactId])
+  if (!socket) return;
+
+  const waitUntilReady = () => {
+    if (socket.connected) {
+      socket.on("typing", handleTyping);
+    } else {
+      socket.once("connect", () => {
+        socket.on("typing", handleTyping);
+      });
+    }
+  };
+
+  const handleTyping = ({ from }) => {
+    if (from === contactId) {
+      console.log("✏️ Typing event received from", from);
+    }
+  };
+
+  waitUntilReady();
+
+  return () => {
+    socket.off("typing", handleTyping);
+  };
+}, [contactId]);
+
 
   const handleTypingChange=(e)=>{
     const socket=socketRef.current;

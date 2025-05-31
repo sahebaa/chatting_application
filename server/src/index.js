@@ -67,38 +67,73 @@ app.post("/messages/:messageId/seen", async (req, res) => {
 
 // Socket logic
 io.use(authenticateSocket);
+
 io.on("connection", (socket) => {
   const userId = socket.userId;
-  redis.sAdd(`userSockets:${userId}`, socket.id);
+  if (!userId) {
+    console.error("❌ No userId found on socket!");
+    socket.disconnect();
+    return;
+  }
 
+  console.log(`✅ User connected: ${userId}, socket ID: ${socket.id}`);
+
+  // Add user socket to Redis set
+  redis.sAdd(`userSockets:${userId}`, socket.id).catch(console.error);
+
+  // Handle incoming message
   socket.on("send_message", async (data, callback) => {
     const { to, text } = data;
     const message = { from: userId, to, text };
-    console.log("message on server",message);
+
+    console.log("📨 Incoming message:", message);
+
     try {
       await sendToQueue("chat_messages", message);
-      callback && callback({ status: "queued" });
+      callback?.({ status: "queued" });
     } catch (err) {
-      console.error("❌ Queue failed:", err);
-      callback && callback({ status: "error" });
+      console.error("❌ Failed to queue message:", err);
+      callback?.({ status: "error" });
     }
   });
 
+  // Mark message as seen
   socket.on("mark_seen", async ({ messageId }) => {
-    await Message.findByIdAndUpdate(messageId, { seen: true });
+    try {
+      await Message.findByIdAndUpdate(messageId, { seen: true });
+    } catch (err) {
+      console.error("❌ Error updating seen status:", err);
+    }
   });
 
-  socket.on("typing",(userId)=>{
-    console.log(`Typing message for ${userId}`);
-    io.to(userId).emit("typing", "typing....");
-  })
+  // Handle typing event
+  socket.on("typing", async (receiverId) => {
+    console.log(`🖋️ Typing event for receiver: ${receiverId}`);
+    try {
+      const receiverSocketIds = await redis.sMembers(`userSockets:${receiverId}`);
+      console.log(`👥 Typing to sockets: ${receiverSocketIds}`);
 
-  socket.on("disconnect", () => {
-    console.log(`User disconnected ${userId}`);
-    redis.sAdd(`lastSeen:${userId}`, Date.now().toString());
-    redis.sRem(`userSockets:${userId}`, socket.id);
+      for (const sid of receiverSocketIds) {
+        io.to(sid).emit("typing", { from: userId });
+      }
+    } catch (err) {
+      console.error("❌ Error emitting typing event:", err);
+    }
+  });
+
+  // On disconnect
+  socket.on("disconnect", async () => {
+    console.log(`🔌 User disconnected: ${userId}, socket ID: ${socket.id}`);
+
+    try {
+      await redis.sRem(`userSockets:${userId}`, socket.id);
+      await redis.set(`lastSeen:${userId}`, Date.now().toString(), { EX: 60 * 5 }); // Optional: store for 5 mins
+    } catch (err) {
+      console.error("❌ Error cleaning up on disconnect:", err);
+    }
   });
 });
+
 
 server.listen(3000, () => {
   console.log("🚀 Server running on http://localhost:3000");
