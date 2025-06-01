@@ -12,7 +12,7 @@ import sendToQueue from "./messageMq/messageProducer.js";
 import { createAdapter } from '@socket.io/redis-adapter';
 import Message from "./models/Message.js";
 import authenticateSocket from "./utils/auth.js";
-
+import Users from './models/Users.js';
 
 await connectDb();
 const app = express();
@@ -40,6 +40,11 @@ app.get("/getoken", async (req, res) => {
   const token = await jwt.sign({ userId }, key);
   res.status(200).json({ token });
 });
+
+app.post('/gerUserInfo',async(req,res)=>{
+  const userId=req.query.userEmail;
+  const result=await Users.findOne({email:userId});
+})
 
 // Chat history
 app.get("/chat/:contactId", async (req, res) => {
@@ -107,8 +112,8 @@ io.on("connection", (socket) => {
   });
 
   // Handle typing event
-  socket.on("typing", async (receiverId) => {
-    console.log(`🖋️ Typing event for receiver: ${receiverId}`);
+  socket.on("typing", async (receiverId,senderId) => {
+    console.log(`🖋️${senderId} Typing event for receiver: ${receiverId}`);
     try {
       const receiverSocketIds = await redis.sMembers(`userSockets:${receiverId}`);
       console.log(`👥 Typing to sockets: ${receiverSocketIds}`);

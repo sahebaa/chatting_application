@@ -1,14 +1,23 @@
 import React, { useEffect, useRef, useState } from "react";
 import useSocket from "../hooks/useSockets";
+import { IoCall } from "react-icons/io5";
+import { IoVideocam } from "react-icons/io5";
 
 const ChatWindow = ({ userId, contactId }) => {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
+  const [doesUserAtDest,setDoesUserAtDest]=useState(false);
+  const [typing,setTyping]=useState(false);
+  const [typingId,setTypingId]=useState('');
+  const [showModal,setShowModal]=useState(false);
   const [localToken, setLocalToken] = useState(
     () => localStorage.getItem("tempToken") || ""
   );
   const { socketRef, isConnected } = useSocket(localToken);
   const messagesEndRef = useRef(null);
+  const lastNotSeenRef=useRef(null);
+  const bootmRef=useRef(null);
+  const hasScrollRef=useRef(false);
 
   // Get token if not present
   useEffect(() => {
@@ -53,6 +62,7 @@ const ChatWindow = ({ userId, contactId }) => {
   }, [isConnected]);
 
   // Fetch chat history
+
   useEffect(() => {
     fetch(`http://localhost:3000/chat/${contactId}?userId=${userId}`)
       .then((res) => res.json())
@@ -88,8 +98,9 @@ const ChatWindow = ({ userId, contactId }) => {
     setText("");
   };
 
-//Listening to typing event when user is typing we are geeting res here
+// Receiving to typing event when user is typing..... we are geeting res here
 useEffect(() => {
+  //Modifiaction are required inside thsi useEffects
   const socket = socketRef.current;
 
   if (!socket) return;
@@ -106,6 +117,7 @@ useEffect(() => {
 
   const handleTyping = ({ from }) => {
     if (from === contactId) {
+      setTyping(true);
       console.log("✏️ Typing event received from", from);
     }
   };
@@ -113,23 +125,93 @@ useEffect(() => {
   waitUntilReady();
 
   return () => {
+    setTyping(false);
     socket.off("typing", handleTyping);
   };
 }, [contactId]);
 
 
+//Sending user to last seen message
+
+const lastMessageSeenIdx=messages?.findIndex((msg)=>{msg.lastSeen===false});
+const nonUnseenIdx=lastMessageSeenIdx===-1;
+
+useEffect(()=>{
+  if(doesUserAtDest)
+    return;
+  if(!hasScrollRef.current){
+    if(nonUnseenIdx){
+      bootmRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "end",
+      });
+    }else{
+      lastNotSeenRef.current?.scrollIntoView({
+        behavior:"smooth",
+        block:"center"
+      });
+    }
+    hasScrollRef.current=true;
+    setDoesUserAtDest(true);
+  }
+},[messages,])
+
+//when we are typing we are emmiting to typing..... 
+
   const handleTypingChange=(e)=>{
     const socket=socketRef.current;
     console.log("value from even",e.target.value);
     setText(e.target.value);
-    socket.emit("typing",contactId);
+    socket.emit("typing",contactId,userId);
   }
+//can create new window off it
+  const handleAudioCall=(e)=>{
+    console.log("we are make audio call");
+  }
+
+  const handleVideoCall=(e)=>{
+    console.log("we are making video call");
+  }
+
+  const overlayStyle = {
+    position: "fixed",
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: "rgba(0, 0, 0, 0.4)",
+    backdropFilter: "blur(5px)",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 1000,
+  };
+
+  const modalStyle = {
+    backgroundColor: "white",
+    padding: "30px",
+    borderRadius: "12px",
+    boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+    minWidth: "300px",
+    textAlign: "center",
+  };
 
   return (
     <div style={{ padding: 20, border: "1px solid #ccc" }}>
-     <div style={{position:"fixed", width:"100%",height:"4rem",background:"red",color:"white"}}>
+     <div style={{position:"fixed", width:"100%",height:"4rem",background:"red",color:"white",display:"flex",alignItems:'center',justifyContent:'center',gap:'20px'}}>
         <h3>Chat with {contactId}</h3>
+        {typing?<p>Typing....</p>:null}
+        <IoCall style={{cursor:"pointer"}} onClick={handleAudioCall} />
+        <IoVideocam style={{cursor:"pointer"}} onClick={handleVideoCall}/>
      </div>
+
+     {showModal && (
+        <div style={overlayStyle}>
+          <div style={modalStyle}>
+            <h2>Video Call</h2>
+            <p>This is a popup over blurred background.</p>
+            <button onClick={() => setShowModal(false)}>Close</button>
+          </div>
+        </div>
+      )}
+
       <div
         style={{
           height: "90%",
@@ -138,7 +220,7 @@ useEffect(() => {
           marginBottom: 10,
         }}
       >
-        {messages.map((msg) => {
+        {messages.map((msg,idx) => {
           const isOwnMessage = msg.from === userId;
           return (
             <div
@@ -148,6 +230,7 @@ useEffect(() => {
                 justifyContent: isOwnMessage ? "flex-end" : "flex-start",
                 marginBottom: "10px",
               }}
+              ref={idx===lastMessageSeenIdx?lastNotSeenRef:idx===messages.length-1?bootmRef:null}
             >
               <div
                 className="messageContent"

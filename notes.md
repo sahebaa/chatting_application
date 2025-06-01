@@ -136,3 +136,30 @@ async function init() {
 init().catch(console.error);
 
 ====================================================================================================================================
+
+ref={
+    index === firstUnseenIndex
+      ? firstUnseenRef
+      : index === messages.length - 1
+      ? bottomRef
+      : null
+    }
+
+we can use ref of the last seen message
+
+useEffect(()=>{
+  if(!hasScrollRef.current){
+    if(nonUnseenIdx){
+      bootmRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "end",
+      });
+    }else{
+      lastNotSeenRef.current?.scrollIntoView({
+        behavior:"smooth",
+        block:"center"
+      });
+    }
+    hasScrollRef.current=true;
+  }
+},[messages])
