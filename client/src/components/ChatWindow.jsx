@@ -171,6 +171,7 @@ useEffect(()=>{
 
   const handleVideoCall=(e)=>{
     console.log("we are making video call");
+    setShowModal(true);
   }
 
   const overlayStyle = {
